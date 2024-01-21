@@ -1,0 +1,48 @@
+dataset:
+  raw: data/input/r3.csv
+  train: data/input_split/df_train.csv
+  test: data/input_split/df_test.csv
+
+metric: MAPE
+
+test_size : 0.3
+
+seed : 123
+
+linear_reg:
+  penalty: 
+    - lasso
+    - ridge
+
+rf:
+  trees: 
+    - 100
+    - 200
+  mtry: 
+    - 2
+    - 4
+
+dt:
+  cp:
+    - 0.01
+    - 0.1
+
+svm:
+  cost:
+    - 1
+    - 10
+  rbf_sigma:
+    - 0.1
+    - 0.5
+
+lgbm:
+  trees:
+    - 100
+    - 200
+  mtry:
+    - 2
+    - 4
+  sigma:
+    - 0.1
+    - 0.5
+

@@ -1,0 +1,11 @@
+---
+title: "ML_NYC_Taxi_Fare_Prediction_R"
+author: "Michał Bryzik & Kacper Gruca"
+date: "2024-01-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
