@@ -4,6 +4,8 @@ library(tidymodels)
 library(lightgbm)
 library(yaml)
 library(readr)
+library(yaml)
+config <- yaml.load_file("config.yaml")
 df_train <- read_csv(config$dataset$train)
 
 
@@ -38,30 +40,54 @@ df_val_split <- testing(split)
 
 # Step 2: Create models
 models <- list(
-  linear_reg_las = linear_reg(),
-  rf = rand_forest(mtry = tune("mtry")),
-  dt = decision_tree(),
-  svm = svm_rbf(cost = tune("cost", "sigma")),
-  lgbm = boost_tree(trees = tune("trees"), learn_rate = tune("learn_rate"))
+  dt = decision_tree(cost_complexity = tune(),
+                     tree_depth = tune(),
+                     min_n = tune()) %>% 
+    set_engine("rpart") %>% 
+    set_mode("regression")
+  
+  #lm = linear_reg(penalty = 0.1) %>%
+   # set_mode("regression")
+  #rf = rand_forest(mtry = 3)%>%
+   # set_mode("regression"),
+  
+  #svm = svm_rbf(cost = tune("cost", "sigma"))%>%
+  #  set_mode("regression"),
+  #lgbm = boost_tree(trees = tune("trees"), learn_rate = tune("learn_rate")%>%
+  #                    set_mode("regression"))
 )
 
 # Step 3: Backward elimination to find the optimal features
 feature_selection_results <- list()
+tree_grid <- grid_regular(cost_complexity(), tree_depth(), min_n(), levels = 3)
 
 for (model_name in names(models)) {
+  print(paste("Processing model:", model_name))
+  
   wf <- workflow() %>%
     add_model(models[[model_name]]) %>%
-    add_recipe(recipe(fare_amount ~ ., data = df_train_split)) %>%
-    tune_grid(
-      resamples = vfold_cv(df_train_split, v = 10),
-      grid = 10
-    ) %>%
+    add_recipe(recipe(fare_amount ~ ., data = df_train_split))
+  
+  # Tune parameters
+  tune_results <- tune_grid(
+    wf,
+    resamples = vfold_cv(df_train_split, v = 5),
+    metrics = metric_set(mape),
+    grid = tree_grid
+  ) %>%
     collect_metrics() %>%
-    filter(.metric == "mape") %>%
     arrange(mean)
   
-  feature_selection_results[[model_name]] <- wf
+  feature_selection_results[[model_name]] <- tune_results
 }
+
+# Print the results
+for (model_name in names(models)) {
+  print(paste("Results for model:", model_name))
+  print(feature_selection_results[[model_name]])
+}
+
+
 
 # Access the results for each model
 for (model_name in names(feature_selection_results)) {
