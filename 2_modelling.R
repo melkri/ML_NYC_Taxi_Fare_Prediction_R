@@ -1,19 +1,33 @@
 # Install and load necessary packages
 install.packages(c("tidymodels", "lightgbm"))
+
 library(tidymodels)
 library(lightgbm)
+library(parallel)
+library(doParallel)
 library(yaml)
 library(readr)
 library(yaml)
+library(tidyverse)
+
+#> Registered S3 method overwritten by 'tune':
+#>   method                   from   
+#>   required_pkgs.model_spec parsnip
+options(tidymodels.dark = TRUE)
+
 config <- yaml.load_file("config.yaml")
 df_train <- read_csv(config$dataset$train)
 
 
-df_train <- subset(df_train, select = -id)
+df_train <- subset(df_train, select = -c(id,pickup_time, pickup_date))
 df_train <- subset(df_train, select = -pickup_time)
 # Include only the 'pickup_date' column
 df_train <- subset(df_train, select = -pickup_date)
 
+
+
+cl <- makeCluster(11)  
+registerDoParallel(cl)  
  # Assuming df_train is your training dataset and df_test is your testing dataset
 
 # Section 1: Data Preprocessing
@@ -40,26 +54,28 @@ df_val_split <- testing(split)
 
 # Step 2: Create models
 models <- list(
+  #rf = rand_forest(mtry = tune(), trees = tune(), min_n = tune())%>%
+   #set_mode("regression"),
   dt = decision_tree(cost_complexity = tune(),
                      tree_depth = tune(),
                      min_n = tune()) %>% 
     set_engine("rpart") %>% 
-    set_mode("regression")
+    set_mode("regression"),
+  lm = linear_reg(penalty = tune(), mixture = tune()) %>%
+    set_mode("regression") %>%
+    set_engine("glmnet"),
+
   
-  #lm = linear_reg(penalty = 0.1) %>%
-   # set_mode("regression")
-  #rf = rand_forest(mtry = 3)%>%
-   # set_mode("regression"),
-  
-  #svm = svm_rbf(cost = tune("cost", "sigma"))%>%
-  #  set_mode("regression"),
-  #lgbm = boost_tree(trees = tune("trees"), learn_rate = tune("learn_rate")%>%
-  #                    set_mode("regression"))
+  #svm = svm_rbf(cost = tune(), rbf_sigma = tune())%>%
+   #set_mode("regression"),
+  lgbm = boost_tree(trees = tune(), learn_rate = tune())%>%
+                      set_mode("regression")
 )
 
 # Step 3: Backward elimination to find the optimal features
 feature_selection_results <- list()
 tree_grid <- grid_regular(cost_complexity(), tree_depth(), min_n(), levels = 3)
+
 
 for (model_name in names(models)) {
   print(paste("Processing model:", model_name))
@@ -69,17 +85,23 @@ for (model_name in names(models)) {
     add_recipe(recipe(fare_amount ~ ., data = df_train_split))
   
   # Tune parameters
+  
+  set.seed(100)
   tune_results <- tune_grid(
     wf,
-    resamples = vfold_cv(df_train_split, v = 5),
+    resamples = vfold_cv(df_train_split, v = 3),
     metrics = metric_set(mape),
-    grid = tree_grid
-  ) %>%
-    collect_metrics() %>%
-    arrange(mean)
-  
+    control = control_grid(verbose = TRUE),
+    grid = grid_latin_hypercube(parameters(models[[model_name]]), size = 10)
+  )
+   
   feature_selection_results[[model_name]] <- tune_results
 }
+
+
+
+
+
 
 # Print the results
 for (model_name in names(models)) {
