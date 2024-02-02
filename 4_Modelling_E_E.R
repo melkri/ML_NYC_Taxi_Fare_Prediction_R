@@ -17,6 +17,34 @@ df_train_new <- read_csv(config$dataset$train)
 df_train <- read_csv(config$dataset$train)
 df_test <- read_csv(config$dataset$test)
 
+df_test_mutated <- df_test %>%
+  mutate(
+    time_of_day = as.POSIXct(pickup_time, format = '%T'),
+    tenmin_interval = format(ceiling_date(time_of_day, '10 mins'), "%H%M"),
+    hour_numeric = hour(pickup_time),
+    hour4 = as.integer(hour_numeric == 4),
+    hour5 = as.integer(hour_numeric == 5),
+    hour19 = as.integer(hour_numeric == 19),
+    hour20 = as.integer(hour_numeric == 20)
+  )
+
+# Now, perform group_by, summarize, and left_join
+df_test_final <- df_test_mutated %>%
+  group_by(tenmin_interval) %>%
+  summarize(count = n(), avg_fare = mean(fare_amount)) %>%
+  arrange(tenmin_interval) %>%
+  left_join(df_test_mutated, by = "tenmin_interval") %>%
+  select(-tenmin_interval, -avg_fare, -id, -pickup_time, -pickup_date, -hour_numeric, -time_of_day) %>%
+  mutate(zero_indicator = as.integer(zero_indicator))
+
+df_test <- df_test_final
+# View the updated DataFrame
+glimpse(df_test_final)
+
+
+
+
+
 # Create a new column 'time_of_day' to represent the time within the day
 df_train <- df_train %>%
   mutate(time_of_day = as.POSIXct(pickup_time, format = '%T'))
@@ -150,7 +178,7 @@ tune_two_stages <- function(models, model_name) {
     metrics   = metric_set(mape),
     control   = control_grid(verbose = TRUE)
   )
-  
+  autoplot(tune_stage_1, metric = 'mape')
   best_params_model_1 <- tune_stage_1 %>% collect_metrics() %>% arrange(mean) %>%
     filter(row_number() == 1)
   print(best_params_model_1)
@@ -177,12 +205,18 @@ tune_two_stages <- function(models, model_name) {
     metrics   = metric_set(mape),
     control   = control_grid(verbose = TRUE)
   )
-  
+  autoplot(tune_stage_2, metric = 'mape')
+  grid_last <- tune_stage_2
   all_results <- tune_stage_2 %>% collect_metrics() %>% arrange(mean) 
   result <- all_results %>% filter(row_number() <= 3)
   result[[param_name]] <- best_params_model_1[[1]]
-  return(list(result = result, all_results = all_results))
+
+  return(list(result = result, all_results = all_results, grid = tune_stage_2))
 }
+
+
+
+
 
 set.seed(123)
 # Example usage
@@ -244,12 +278,59 @@ for (model_name in model_names) {
 }
 
 # If you want to save all the results in a list
-results_list3 <- list(
+results_list6 <- list(
+  lgbm = tune_two_stages(models, 'lgbm'),
+  decision_tree = tune_two_stages(models, 'decision_tree'),
+  xgboost = tune_two_stages(models, 'xgboost')
+)
+results_list6 <- list(
   random_forest = tune_two_stages(models, 'random_forest')
 )
 
+Sresults_rf <- data.frame()
 
+for (i in 1:3) {
+  tuned_params <- results_list3$random_forest$result[i, c("min_n", "trees")]
+  
 
+  rounded_params <- round(as.numeric(tuned_params), 2)
+  
 
+  lgbm_model <- rand_forest(
+    mode = "regression",
+    engine = "ranger",
+    min_n = rounded_params[1],
+    trees = as.integer(rounded_params[2]),
+    mtry = 6
+    #stop_iter = as.integer(rounded_params[4])
+  )
+
+  rec_spec <- recipe(fare_amount ~ ., df_train)
+  
+  wflw_model <- workflow() %>%
+    add_model(lgbm_model) %>%
+    add_recipe(rec_spec)
+  
+
+  trained_model <- wflw_model %>% fit(data = df_train)
+  predictions <- predict(trained_model, new_data = df_test)
+  mape_test <- mean(abs(df_test$fare_amount - predictions$.pred) / df_test$fare_amount) * 100
+  
+  iteration_df <- data.frame(
+    iteration = i,
+    mean_train = results_list$lgbm$result[i, "mean"],
+    Mape_test = mape_test,
+    models_spec = paste(names(tuned_params), "=", rounded_params, collapse = ", "),
+    model_name = "decision_tree"
+  )
+  
+  results_rf <- bind_rows(results_rf, iteration_df)
+}
+
+print(results_df)
+
+results_rf$mean <- results_list3$random_forest$result$mean
+results_rf <- results_rf[, c("iteration", "mean", "Mape_test", "models_spec", "model_name")]
+results_rf$models_spec <- paste(results_rf$models_spec, "mtry = 6", sep = ", ")
 
 

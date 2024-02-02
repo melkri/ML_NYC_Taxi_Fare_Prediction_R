@@ -1,0 +1,35 @@
+\begin{table}[!h]
+
+\caption{Tuned Model Results}
+\centering
+\fontsize{12}{14}\selectfont
+\begin{tabular}[t]{r|r|r|l|l}
+\hline
+\cellcolor[HTML]{f2ebe6}{\textcolor{black}{\textbf{iteration}}} & \cellcolor[HTML]{f2ebe6}{\textcolor{black}{\textbf{mean}}} & \cellcolor[HTML]{f2ebe6}{\textcolor{black}{\textbf{Mape\_test}}} & \cellcolor[HTML]{f2ebe6}{\textcolor{black}{\textbf{models\_spec}}} & \cellcolor[HTML]{f2ebe6}{\textcolor{black}{\textbf{model\_name}}}\\
+\hline
+1 & 12.33295 & 11.481856 & learn\_rate = 0.02, tree\_depth = 8, loss\_reduction = 0.97, stop\_iter = 18 & lgbm\\
+\hline
+2 & 12.33604 & 11.524214 & learn\_rate = 0.02, tree\_depth = 9, loss\_reduction = 0, stop\_iter = 19 & lgbm\\
+\hline
+3 & 12.33978 & 11.562337 & learn\_rate = 0.02, tree\_depth = 11, loss\_reduction = 0, stop\_iter = 7 & lgbm\\
+\hline
+1 & 68.35011 & 70.944165 & learn\_rate = 0.02, tree\_depth = 2, loss\_reduction = 0.01, stop\_iter = 11 & xgboost\\
+\hline
+2 & 69.35585 & 71.111137 & learn\_rate = 0.02, tree\_depth = 3, loss\_reduction = 0.02, stop\_iter = 9 & xgboost\\
+\hline
+3 & 69.58055 & 71.274780 & learn\_rate = 0.02, tree\_depth = 5, loss\_reduction = 0, stop\_iter = 5 & xgboost\\
+\hline
+1 & 10.36943 & 10.840571 & min\_n = 19, tree\_depth = 13, cost\_complexity = 0 & decision\_tree\\
+\hline
+2 & 10.37297 & 10.581786 & min\_n = 8, tree\_depth = 11, cost\_complexity = 0 & decision\_tree\\
+\hline
+3 & 10.40493 & 10.944751 & min\_n = 31, tree\_depth = 14, cost\_complexity = 0 & decision\_tree\\
+\hline
+1 & 10.36943 & 9.773713 & min\_n = 5, trees = 853, mtry = 6 & random\_forest\\
+\hline
+2 & 10.37297 & 9.775003 & min\_n = 15, trees = 853, mtry = 6 & random\_forest\\
+\hline
+3 & 10.40493 & 9.770758 & min\_n = 9, trees = 853, mtry = 6 & random\_forest\\
+\hline
+\end{tabular}
+\end{table}

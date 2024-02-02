@@ -35,8 +35,8 @@ df$pickup_datetime_formatted <- format(df$pickup_datetime, date_format)
 checker <- df$key_formatted != df$pickup_datetime_formatted
 
 # Filter the data frame to get rows where key_formatted and pickup_datetime_formatted are different
-result_df <- df[checker, ]
-result_df
+#result_df <- df[checker, ]
+#result_df
 # We can see that both columns here are the seme,let's abandon key column and format time column
 # Extract pickup_date and pickup_time from pickup_datetime
 
@@ -67,47 +67,42 @@ df$zero_indicator <- ifelse(df$pickup_latitude == 0 | df$pickup_longitude == 0 |
 df$straight_dist <- ifelse(df$zero_indicator == 1, 0, 
                                 as.numeric(distHaversine(df[,c("pickup_longitude", "pickup_latitude")], 
                                                          df[,c("dropoff_longitude", "dropoff_latitude")])/1000))
-# Saving the files
-split_and_save(df, TRUE, 'df')
 
-# Summary of the data
-summary(df_train)
-head(df_train)
 # Correlation matrix
 # Exclude 'id' column for correlation analysis
-correlation_matrix <- cor(df_train[, !(names(df_train)  %in% c("id", "pickup_date", "pickup_time", "zero_indicator"))], use = "complete.obs") 
+correlation_matrix <- cor(df[, !(names(df_train)  %in% c("id", "pickup_date", "pickup_time", "zero_indicator"))], use = "complete.obs") 
 corrplot(correlation_matrix, method = "circle")
 
 
 # Scatterplot for geolocation values
-ggplot(df_train[df_train$zero_indicator != 1,], aes(x = pickup_longitude, y = pickup_latitude)) +
+ggplot(df[df$zero_indicator != 1,], aes(x = pickup_longitude, y = pickup_latitude)) +
   geom_point(aes(color = fare_amount), alpha = 0.5) +
   scale_color_gradient(low = "blue", high = "red") +
   labs(title = 'Pickup locations colored by fare amount', x = 'Longitude', y = 'Latitude') +
   theme_minimal()
 
-ggplot(df_train, aes(x = dropoff_longitude, y = dropoff_latitude)) +
+ggplot(df, aes(x = dropoff_longitude, y = dropoff_latitude)) +
   geom_point(aes(color = fare_amount), alpha = 0.5) +
   scale_color_gradient(low = "blue", high = "red") +
   labs(title = 'Dropoff locations colored by fare amount', x = 'Longitude', y = 'Latitude') +
   theme_minimal()
 
 # Boxplot for fare_amount against passenger_count
-ggplot(df_train, aes(x = as.factor(passenger_count), y = fare_amount)) +
+ggplot(df, aes(x = as.factor(passenger_count), y = fare_amount)) +
   geom_boxplot() +
   labs(title = 'Boxplot of fare amount by passenger count', x = 'Passenger Count', y = 'Fare Amount') +
   theme_minimal()
 
 # Additional: Time series plot of fare_amount
-df_train$pickup_date <- as.Date(df_train$pickup_date)
-ggplot(df_train, aes(x = pickup_date, y = fare_amount)) +
+df$pickup_date <- as.Date(df$pickup_date)
+ggplot(df, aes(x = pickup_date, y = fare_amount)) +
   geom_line() +
   labs(title = 'Time series plot of fare amount', x = 'Date', y = 'Fare Amount') +
   theme_minimal()
 
 
 # Filter out rows where zero_indicator = 1
-df_train_filtered <- df_train[df_train$zero_indicator != 1,]
+df_train_filtered <- df[df$zero_indicator != 1,]
 
 # Create a color palette for the points
 pal <- colorQuantile("Greens", df_train_filtered$fare_amount, n = 5)
@@ -132,13 +127,6 @@ dropoff_map <- leaflet() %>%
                    radius = 0.3,
                    opacity = 0.5)
 
-
-ggplot(df_train, aes(x = pickup_time, y = fare_amount)) +
-  geom_point(alpha = 0.1, position = position_jitter(width = 0.3, height = 0)) +
-  theme_minimal() +
-  labs(x = "Pickup Time", y = "Fare Amount", title = "Fare Amount vs Pickup Time")
-
-
 # Display the two maps side by side
 browsable(
   tags$div(
@@ -151,7 +139,7 @@ browsable(
       style = "width: 50%;",
       dropoff_map
     )
-  )
+  )S
 )
 
 ### Modelling ###
@@ -328,3 +316,12 @@ if (length(commandArgs(trailingOnly = TRUE)) == 0) {
 
 # Run the main function
 run_models()
+
+# Assuming your results are stored in a data frame called `results_final`
+library(knitr)
+
+# Create a simple table
+table_output <- kable(results_final, format = "html", caption = "Tuned Model Results")
+
+# Print the table
+cat(table_output)
