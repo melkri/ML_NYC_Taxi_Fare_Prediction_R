@@ -277,6 +277,7 @@ for (model_name in model_names) {
   results_list[[model_name]] <- result
 }
 
+
 # If you want to save all the results in a list
 results_list6 <- list(
   lgbm = tune_two_stages(models, 'lgbm'),
@@ -324,7 +325,8 @@ for (i in 1:3) {
     model_name = "decision_tree"
   )
   
-  results_rf <- bind_rows(results_rf, iteration_df)
+  results_rf <- bind_rows(
+    , iteration_df)
 }
 
 print(results_df)
