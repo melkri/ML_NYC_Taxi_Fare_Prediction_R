@@ -288,7 +288,7 @@ results_list6 <- list(
 Sresults_rf <- data.frame()
 
 for (i in 1:3) {
-  tuned_params <- results_list3$random_forest$result[i, c("min_n", "trees")]
+  tuned_params <- results_list$random_forest$result[i, c("min_n", "trees")]
   
 
   rounded_params <- round(as.numeric(tuned_params), 2)

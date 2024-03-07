@@ -383,32 +383,33 @@ Further, let's define the models grid, which parameters to tune, what type of en
 
 ``` {r, echo = False}
 
+grid_tree_1 <- set_seed_grid(grid_latin_hypercube(learn_rate(), size = 2), 123)
+grid_tree_2 <- set_seed_grid(grid_latin_hypercube(tree_depth(), loss_reduction(), stop_iter(), size = 2), 123)
+
 models <- list(
   lgbm = list(
     model_name = 'lgbm',
     model_1 = boost_tree(mode = "regression", engine = "lightgbm", learn_rate = tune()),
     model_2_args = list(tree_depth = tune(), loss_reduction = tune(), stop_iter = tune()),
     rec_spec = recipe(fare_amount ~ ., df_train),
-    grid_1 = set_seed_grid(grid_latin_hypercube(learn_rate(), size = 10), 123),
-    grid_2 = set_seed_grid(grid_latin_hypercube(tree_depth(), loss_reduction(), stop_iter(), size = 10), 123)
+    grid_1 = grid_tree_1,
+    grid_2 = grid_tree_2
   ),
   xgboost = list(
     model_name = 'xgboost',
     model_1 = boost_tree(mode = "regression", engine = "xgboost", learn_rate = tune()),
     model_2_args = list(tree_depth = tune(), loss_reduction = tune(), stop_iter = tune()),
     rec_spec = recipe(fare_amount ~ ., df_train),
-    grid_1 = set_seed_grid(grid_latin_hypercube(learn_rate(), size = 10), 123),
-    grid_2 = set_seed_grid(grid_latin_hypercube(tree_depth(), loss_reduction(), stop_iter(), size = 10), 123)
+    grid_1 = grid_tree_1,
+    grid_2 = grid_tree_2
   ),
   decision_tree = list(
     model_name = 'decision_tree',
-    model_1 = decision_tree(mode = "regression", engine = "rpart", cost_co
-                            
-                            mplexity = tune()),
+    model_1 = decision_tree(mode = "regression", engine = "rpart", cost_complexity = tune()),
     model_2_args = list(tree_depth = tune(), min_n = tune()),
     rec_spec = recipe(fare_amount ~ ., df_train),
-    grid_1 = set_seed_grid(grid_latin_hypercube(cost_complexity(), size = 10), 123),
-    grid_2 = set_seed_grid(grid_latin_hypercube(tree_depth(), min_n(), size = 10), 123)
+    grid_1 = set_seed_grid(grid_latin_hypercube(cost_complexity(), size = 2), 123),
+    grid_2 = set_seed_grid(grid_latin_hypercube(tree_depth(), min_n(), size = 2), 123)
   )
   #,random_forest_1 = list(
   #  model_name = 'random_forest_1',
@@ -429,7 +430,9 @@ models <- list(
   #)
 )
 
-model_names <- c('lgbm', 'xgboost', 'decision_tree', 'random_forest_1', 'random_forest_2')
+model_names <- c('lgbm', 'xgboost', 'decision_tree'
+                 #, 'random_forest_1', 'random_forest_2'
+                 )
 
 ```
 

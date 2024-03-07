@@ -43,6 +43,7 @@ tune_two_stages <- function(models, model_name) {
   best_params_model_1 <- tune_stage_1 %>% collect_metrics() %>% arrange(mean) %>%
     filter(row_number() == 1)
   print(best_params_model_1)
+  
   # Stage 2 tuning
   set.seed(123)
   param_name <- names(model_params$grid_1)[1]
@@ -69,10 +70,12 @@ tune_two_stages <- function(models, model_name) {
   autoplot(tune_stage_2, metric = 'mape')
   grid_last <- tune_stage_2
   all_results <- tune_stage_2 %>% collect_metrics() %>% arrange(mean) 
-  result <- all_results %>% filter(row_number() <= 3)
-  result[[param_name]] <- best_params_model_1[[1]]
   
-  return(list(result = result, all_results = all_results, grid = tune_stage_2))
+  # Get top 3 models
+  top_3_models <- all_results %>% filter(row_number() <= 3)
+  
+  
+  return(list(result = top_3_models, all_results = all_results, grid = tune_stage_2))
 }
 
 set_seed_grid <- function(grid, seed) {
