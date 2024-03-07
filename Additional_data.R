@@ -13,28 +13,7 @@ tenmin_interval_stats <- df_train_new %>%
   arrange(tenmin_interval)
 
 # Plot count of records per 10-minute interval
-ggplot(tenmin_interval_stats, aes(x = tenmin_interval, y = count)) +
-  geom_bar(stat = "identity", fill = "lightgreen", color = "black") +
-  labs(title = "Count of Records Per 10-Minute Interval",
-       x = "10-Minute Interval",
-       y = "Count of Records") +
-  theme(axis.text.x = element_blank(), plot.background = element_rect(fill = "#f2ebe6"),
-        panel.background = element_rect(fill = "#f2ebe6"),  # Remove x-axis tick text
-        axis.ticks.x = element_blank(),  # Remove x-axis ticks
-        axis.title.x = element_text(margin = margin(t = 20)))  # Adjust the title margin for better visibility
-
-SS# Plot average fare_amount per 10-minute interval
-ggplot(tenmin_interval_stats, aes(x = tenmin_interval, y = avg_fare)) +
-  geom_bar(stat = "identity", fill = "skyblue", color = "black") +
-  labs(title = "Average Fare Amount Per 10-Minute Interval",
-       x = "10-Minute Interval",
-       y = "Average Fare Amount") +
-    theme(axis.text.x = element_blank(), plot.background = element_rect(fill = "#f2ebe6"),
-        panel.background = element_rect(fill = "#f2ebe6"),  # Remove x-axis tick text
-        axis.ticks.x = element_blank(),  # Remove x-axis ticks
-        axis.title.x = element_text(margin = margin(t = 20)))   #  # Rotate x-axis labels for better visibility
-
-S# Assuming your pickup_time is of class hms
+# Assuming your pickup_time is of class hms
 df_train_new <- df_train_new %>%
   mutate(hour = hour(pickup_time),
          minute = minute(pickup_time),
@@ -56,7 +35,7 @@ library(corrplot)
 # Calculate correlation matrix
 cor_matrix <- cor(df_train)
 
-# Create a modern, readable plot
+# 
 corrplot(cor_matrix, method = "color", tl.col = "black", tl.srt = 45, addrect = 3)
 
 # Add a title
@@ -66,6 +45,26 @@ library(ggplot2)
 library(corrplot)
 
 # Assuming df_train contains only numerical variables
+ggplot(tenmin_interval_stats, aes(x = tenmin_interval, y = count)) +
+  geom_bar(stat = "identity", fill = "lightgreen", color = "black") +
+  labs(title = "Count of Records Per 10-Minute Interval",
+       x = "10-Minute Interval",
+       y = "Count of Records") +
+  theme(axis.text.x = element_blank(), plot.background = element_rect(fill = "#f2ebe6"),
+        panel.background = element_rect(fill = "#f2ebe6"),  # Remove x-axis tick text
+        axis.ticks.x = element_blank(),  # Remove x-axis ticks
+        axis.title.x = element_text(margin = margin(t = 20)))  # Adjust the title margin for better visibility
+
+# Plot average fare_amount per 10-minute interval
+ggplot(tenmin_interval_stats, aes(x = tenmin_interval, y = avg_fare)) +
+  geom_bar(stat = "identity", fill = "skyblue", color = "black") +
+  labs(title = "Average Fare Amount Per 10-Minute Interval",
+       x = "10-Minute Interval",
+       y = "Average Fare Amount") +
+  theme(axis.text.x = element_blank(), plot.background = element_rect(fill = "#f2ebe6"),
+        panel.background = element_rect(fill = "#f2ebe6"),  # Remove x-axis tick text
+        axis.ticks.x = element_blank(),  # Remove x-axis ticks
+        axis.title.x = element_text(margin = margin(t = 20)))   #  # Rotate x-axis labels for better visibility
 
 # Calculate correlation matrix
 cor_matrix <- cor(df_train)
@@ -79,11 +78,7 @@ df_train_filtered <- df_train[, selected_variables]
 
 # Calculate correlation matrix for the filtered variables
 cor_matrix_filtered <- cor(df_train_filtered)
-
-# Create a ggplot correlation plot with a custom background color
 cor_matrix_long <- reshape2::melt(cor_matrix_filtered)
-
-# Create a ggplot correlation plot with a custom background color
 ggplot(data = cor_matrix_long, aes(x = Var1, y = Var2, fill = value)) +
   geom_tile(color = "white") +
   scale_fill_gradient2(low = "#fcbba1", high = "#3288bd", mid = "white", 

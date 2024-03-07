@@ -261,8 +261,6 @@ models <- list(
   )
 )
 
-
-
 model_names <- c('lgbm', 'xgboost', 'decision_tree', 'random_forest')
 
 

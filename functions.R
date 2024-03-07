@@ -19,3 +19,63 @@ calculate_na_zero_stats <- function(column) {
   
   return(c(na_count = na_count, zero_count = zero_count, na_percentage = na_percentage, zero_percentage = zero_percentage))
 }
+
+tune_two_stages <- function(models, model_name) {
+  # Extract parameters based on the model_name
+  model_params <- models[[model_name]]
+  
+  # Stage 1 tuning
+  set.seed(123)
+  wflw_model_1 <- workflow() %>%
+    add_model(model_params$model_1) %>%
+    add_recipe(model_params$rec_spec)
+  
+  set.seed(123)
+  cv_folds <- vfold_cv(df_train, v = 3)
+  tune_stage_1 <- tune_grid(
+    wflw_model_1,
+    resamples = cv_folds,
+    grid      = model_params$grid_1,
+    metrics   = metric_set(mape),
+    control   = control_grid(verbose = TRUE)
+  )
+  autoplot(tune_stage_1, metric = 'mape')
+  best_params_model_1 <- tune_stage_1 %>% collect_metrics() %>% arrange(mean) %>%
+    filter(row_number() == 1)
+  print(best_params_model_1)
+  # Stage 2 tuning
+  set.seed(123)
+  param_name <- names(model_params$grid_1)[1]
+  param_value <- best_params_model_1[[1]]
+  
+  # Set up model_2
+  model_params$model_2_args[[param_name]] <- param_value
+  model_2 <- model_params$model_1 %>%
+    set_args(
+      !!!model_params$model_2_args  
+    )
+  wflw_model_2 <- wflw_model_1 %>%
+    update_model(model_2)
+  
+  # Tune stage 2
+  set.seed(123)
+  tune_stage_2 <- tune_grid(
+    wflw_model_2,
+    resamples = cv_folds,
+    grid      = model_params$grid_2,
+    metrics   = metric_set(mape),
+    control   = control_grid(verbose = TRUE)
+  )
+  autoplot(tune_stage_2, metric = 'mape')
+  grid_last <- tune_stage_2
+  all_results <- tune_stage_2 %>% collect_metrics() %>% arrange(mean) 
+  result <- all_results %>% filter(row_number() <= 3)
+  result[[param_name]] <- best_params_model_1[[1]]
+  
+  return(list(result = result, all_results = all_results, grid = tune_stage_2))
+}
+
+set_seed_grid <- function(grid, seed) {
+  set.seed(seed)
+  grid
+}

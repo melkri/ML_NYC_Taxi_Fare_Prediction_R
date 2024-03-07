@@ -1,11 +1,503 @@
 ---
-title: "ML_NYC_Taxi_Fare_Prediction_R"
-author: "Michał Bryzik & Kacper Gruca"
-date: "2024-01-13"
-output: html_document
+title: "ML - German_Credit_Risk"
+author: "Bryzik Michał, Gruca Kacper"
+date: "2024-01-09"
+output: 
+  html_document:
+    toc: yes
+    toc_depth: 4
+    toc_float: TRUE
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
+```{r, include=FALSE}
+options(width = 60)
+local({
+  hook_output <- knitr::knit_hooks$get('output')
+  knitr::knit_hooks$set(output = function(x, options) {
+    if (!is.null(options$max.height)) options$attr.output <- c(
+      options$attr.output,
+      sprintf('style="max-height: %s;"', options$max.height)
+    )
+    hook_output(x, options)
+  })
+})
+```
+
+## Introduction
+
+Regression problem - NYC Taxi Fare Prediction
+
+The main goal of this paper is to apply ML methods in order to predict NYC Taxi Fare based on set of prepared features and with addition of feature engineering. 
+
+We base on the dataset provided by the Lecturer, that consists of 17 independent variables and 1 dependent variable called: fare_amount. Out of 17 prepared variables there are also 10 so called "black box" variable that lack specific interpretability during the model, however may be impactful on the final prediction.
+
+All the following text is divided into sections in a clean manner, in order to improve the readability.
+
+Firstly let's import all the needed variables for the project:
+
+```{r, message=FALSE, warning=FALSE}
+library(caret)
+library(tidymodels)
+library(lightgbm)
+library(parallel)
+library(doParallel)
+library(yaml)
+library(readr)
+library(yaml)
+library(tidyverse)
+library(bonsai)
+library(tidymodels)
+library(ranger)
+library(kernlab)
+library(knitr)
+library(kableExtra)
+library(plotfunctions)
+library(DT)
+library(geosphere)
+library(pander)
+```
+
+Additionally let's read the specification from config.yaml file
+
+```{r, message=FALSE}
+source('functions.R')
+config <- yaml.load_file("config.yaml")
+df <- read_csv(config$dataset$raw)
+```
+
+
+## Data Preparation
+
+```{r, message=FALSE}
+df <- read_csv(config$dataset$raw)
+```
+
+Below we can observe raw dataframe and its format of the columns:
+
+```{r, echo=FALSE}
+datatable(df[1:10, ], options = list(
+  searching = FALSE,
+  pageLength = 5,
+  lengthMenu = c(5, 10, 15, 20),
+  scrollX = TRUE
+), width = "100%")  # Adjust the width as needed
+```
+
+### Converting datetime variables
+
+Let's firstly focus on formatting specific the time variables and look into the comparison between key_formatted column and pickup_datetime_formatted
+
+```{r}
+df$key_formatted <- gsub("\\..*", "", as.character(df$key))
+df$key_formatted <- as.Date(df$key_formatted)
+
+df$pickup_datetime <- as.POSIXct(df$pickup_datetime)
+date_format <- "%Y-%m-%d %H:%M:%S"
+
+df$key_formatted <- format(df$key_formatted, date_format)
+df$pickup_datetime_formatted <- format(df$pickup_datetime, date_format)
+```
+
+```{r, echo=FALSE}
+checker <- df$key_formatted == df$pickup_datetime_formatted
+print(sum(!unlist(checker)))
+```
+As we can see, the columns are identical, which means we can abandon one of them, and continue with formatting the date.
+
+```{r, echo=FALSE}
+df$pickup_date <- format(as.Date(df$key), "%Y-%m-%d")
+df$pickup_time <- format(df$key, "%H:%M:%S")
+
+df <- df[, !(names(df) %in% c("pickup_datetime","pickup_datetime_formatted","key","key_formatted")), drop = FALSE]
+```
+
+
+### NA/NULLs Analysis
+Let's see how many NA's and Nulls do we have within the datatable.
+
+```{r, echo=FALSE}
+na_zero_stats <- t(sapply(df, calculate_na_zero_stats))
+  
+summary_df <- as.data.frame(na_zero_stats)
+summary_df$column_names <- rownames(summary_df)
+summary_df <- summary_df[, c("column_names", "na_count", "zero_count", "na_percentage", "zero_percentage")]
+
+datatable(summary_df, options = list(
+  searching = FALSE,
+  pageLength = 5,
+  lengthMenu = c(5, 10, 15, 20),
+  scrollX = TRUE
+), width = "100%")
+```
+
+### Geospatial column
+
+As all of the non-meaningful 0 values are in longitude/lattitude columns, we have decided to apply binary value for whether we have meaningful geospatial values or not, and in case of existing values, calculate the straight distance between those two points taking into account the curvature of the earth.
+
+```{r, echo=FALSE}
+df$zero_indicator <- ifelse(df$pickup_latitude == 0 | df$pickup_longitude == 0 | df$dropoff_latitude == 0 | df$dropoff_longitude == 0, TRUE, FALSE)
+
+df$straight_dist <- ifelse(df$zero_indicator == 1, 0, 
+                                as.numeric(distHaversine(df[,c("pickup_longitude", "pickup_latitude")], 
+                                                         df[,c("dropoff_longitude", "dropoff_latitude")])/1000))
+                                                         
+
+```
+
+
+As the early cleaning is over we can train/test split the data using 30% test size.
+
+```{r, echo = FALSE}
+split_and_save(df, TRUE, 'df')
+```
+
+## Exploratory Data Analysis
+
+Firstly let's import the datasets.
+
+```{r, echo = FALSE}
+df_train <- read_csv(config$dataset$train, show_col_types = FALSE)
+df_test <- read_csv(config$dataset$test, show_col_types = FALSE)
+```
+
+In order to make a simple data analysis let's look specifically into numerical variables as they are the only ones present in out dataset.
+
+```{r, fig.width=8, fig.height=8}
+par(mfrow=c(5, 3))
+numeric_variables <- names(df)[sapply(df_train, is.numeric) & !(names(df_train) %in% c("id", "pickup_date", "pickup_time", 'dropoff_latitude', 'dropoff_longitude', 'pickup_latitude','pickup_longitude'))]
+for (var in numeric_variables) {
+    hist(df_train[[var]], main=paste("Histogram of", var), xlab=var)
+}
+```
+```{r, fig.width=8, fig.height=8}
+par(mfrow=c(5, 3))
+numeric_variables <- names(df)[sapply(df, is.numeric) & !(names(df) %in% c("id", "pickup_date", "pickup_time", 'dropoff_latitude', 'dropoff_longitude', 'pickup_latitude','pickup_longitude'))]
+for (var in numeric_variables) {
+    plot(df[[var]], df$fare_amount, main=paste("Scatter plot of", var, "vs fare_amount"), xlab=var, ylab="fare_amount")
+}
+```
+
+As we can see, it is hard to assess any specific information based on the visuals and variables distribution. The only variable seemingly correlated in a rather linear manner with fare_amount seems to be feat08.
+
+However we have intentionally left earlier analysis of datetime columns. We could theoretically think, based on our own experience, that either hours or amount of calls to the taxi company should be somehow correlated with the price. 
+
+```{r, echo = FALSE}
+
+df$pickup_time <- strptime(df$pickup_time, format = "%H:%M:%S")
+df <- df %>%
+  mutate(hour = hour(pickup_time),
+         minute = minute(pickup_time),
+         tenmin_interval = make_datetime(2000, 1, 1, hour, minute - minute %% 10, 0))
+df <- df %>%
+  group_by(hour, tenmin_interval) %>%
+  mutate(tenmin_count = n()) %>%
+  ungroup()
+df <- df %>%
+  mutate(time_of_day = as.POSIXct(pickup_time, format = '%T'))
+df <- df %>%
+  mutate(tenmin_interval = format(ceiling_date(time_of_day, '10 mins'), "%H%M"))
+
+
+```
+
+
+Firstly let's take a look into the distribution of avg. fare price per hour. As we can notice, there is no much of a strict definition, however we can see few hours standing out such as 4,5 and 19,20. 
+
+``` {r, echo = FALSE}
+
+hourly_interval_stats <- df_train %>%
+  group_by(hour_numeric) %>%
+  dplyr::summarize(avg_fare = mean(fare_amount, na.rm = TRUE), .groups = "drop") %>%
+  arrange(hour_numeric)
+
+ggplot(hourly_interval_stats, aes(x = hour_numeric, y = avg_fare)) +
+  geom_bar(stat = "identity", fill = "lightgreen", color = "black") +
+  labs(title = "Average Fare Per Hour Interval",
+       x = "Hour Interval",
+       y = "Average Fare") +
+  theme(plot.background = element_rect(fill = "#f2ebe6"),
+        panel.background = element_rect(fill = "#f2ebe6"))
+
+```
+
+``` {r, echo = FALSE}
+df_train <- df_train %>%
+  mutate(
+    time_of_day = as.POSIXct(pickup_time, format = '%T'),
+    tenmin_interval = format(ceiling_date(time_of_day, '10 mins'), "%H%M"),
+    hour_numeric = hour(pickup_time),
+    hour4 = as.integer(hour_numeric == 4),
+    hour5 = as.integer(hour_numeric == 5),
+    hour19 = as.integer(hour_numeric == 19),
+    hour20 = as.integer(hour_numeric == 20)
+  )
+
+df_train <- df_train %>%
+  group_by(hour_numeric, tenmin_interval) %>%
+  mutate(tenmin_count = n()) %>%
+  ungroup()
+
+df_train <- df_train %>%
+  group_by(tenmin_interval) %>%
+  summarize(count = n(), avg_fare = mean(fare_amount)) %>%
+  arrange(tenmin_interval) %>%
+  left_join(df_train, by = "tenmin_interval") 
+```
+
+As previously explained we have decided to look into the possible correlation between fare amount and the count of taxi calls throughout 10 minute intervals. 
+
+``` {r, echo = FALSE}
+tenmin_interval_stats <- df_train %>%
+  group_by(tenmin_interval) %>%
+  dplyr::summarize(count = n(), avg_fare = mean(fare_amount, na.rm = TRUE), .groups = "drop") %>%
+  arrange(tenmin_interval)
+
+# Assuming df_train contains only numerical variables
+ggplot(tenmin_interval_stats, aes(x = tenmin_interval, y = count)) +
+  geom_bar(stat = "identity", fill = "lightgreen", color = "black") +
+  labs(title = "Count of Records Per 10-Minute Interval",
+       x = "10-Minute Interval",
+       y = "Count of Records") +
+  theme(axis.text.x = element_blank(), plot.background = element_rect(fill = "#f2ebe6"),
+        panel.background = element_rect(fill = "#f2ebe6"),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 20)))
+
+```
+``` {r, echo = FALSE}
+ggplot(tenmin_interval_stats, aes(x = tenmin_interval, y = avg_fare)) +
+  geom_bar(stat = "identity", fill = "skyblue", color = "black") +
+  labs(title = "Average Fare Amount Per 10-Minute Interval",
+       x = "10-Minute Interval",
+       y = "Average Fare Amount") +
+  theme(axis.text.x = element_blank(), plot.background = element_rect(fill = "#f2ebe6"),
+        panel.background = element_rect(fill = "#f2ebe6"),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 20)))
+```
+
+Although there is no strict correlation, we can see a similar behaviour [correlated negatively] among early hours. As for now we have decided to add such variable [count of taxi calls per 10 minute intervals] into the dataset.
+
+``` {r, echo = False}
+df_train <- df_train%>%
+  select(-tenmin_interval, -avg_fare, -id, -pickup_time, -pickup_date, -hour_numeric, -time_of_day, -count) %>%
+  mutate(zero_indicator = as.integer(zero_indicator))
+```
+
+
+Unfortunately we can also hardly spot any reasonable correlation between fare amount and other independent variables. Additionally some of the variables [such as zero_indicator, pickup&dropoff latitude/longitude], however it is expected.
+
+``` {r, echo = False}
+cor_matrix_filtered <- cor(df_train)
+cor_matrix_long <- reshape2::melt(cor_matrix_filtered)
+ggplot(data = cor_matrix_long, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "#fcbba1", high = "#3288bd", mid = "white", 
+                       midpoint = 0, limit = c(-1, 1), space = "Lab", 
+                       name = "Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_rect(fill = "#f2ebe6"),plot.background = element_rect(fill = "#f2ebe6")) +
+  ggtitle("Filtered Correlation Plot for df_train")
+```
+
+## Hyperparameter tuning and cross_validation
+
+The idea itself for the hyperparameter tunning and the cross-validation was to utilize the whole tidymodels infrastructure in R in order to also compare it's usability to scikit-learn package for python. 
+As a tool for tuning hypermeters I will use created function that utilizes grid_latin_hypercube as a theoretical space of grids of parameters to search for the most optimal parameter configuration. In order to assess the optimality we will use MAPE metric [Mean absolute percentage error]
+The tune_two_stages functions works like that:
+- Import earlier specified parameters of a model that will be tuned
+- create a workflow model that will pass the model specification into the tuning part
+- specify number of folds in cross-validation.
+- tune the first stage [tuning only one of the variables in order to decrease computing complexity]
+- pass the best performing parameter into further function
+- tune the second stage [1-3 parameters depending on the model/definition]
+- autoplot the models which shows how specific parameters impact the validation MAPE value
+- return and save the top 3 model specification
+
+``` {r, echo = False}
+tune_two_stages <- function(models, model_name) {
+  # Extract parameters based on the model_name
+  model_params <- models[[model_name]]
+  
+  # Stage 1 tuning
+  set.seed(123)
+  wflw_model_1 <- workflow() %>%
+    add_model(model_params$model_1) %>%
+    add_recipe(model_params$rec_spec)
+  
+  set.seed(123)
+  cv_folds <- vfold_cv(df_train, v = 3)
+  tune_stage_1 <- tune_grid(
+    wflw_model_1,
+    resamples = cv_folds,
+    grid      = model_params$grid_1,
+    metrics   = metric_set(mape),
+    control   = control_grid(verbose = TRUE)
+  )
+  autoplot(tune_stage_1, metric = 'mape')
+  best_params_model_1 <- tune_stage_1 %>% collect_metrics() %>% arrange(mean) %>%
+    filter(row_number() == 1)
+  print(best_params_model_1)
+  # Stage 2 tuning
+  set.seed(123)
+  param_name <- names(model_params$grid_1)[1]
+  param_value <- best_params_model_1[[1]]
+  
+  # Set up model_2
+  model_params$model_2_args[[param_name]] <- param_value
+  model_2 <- model_params$model_1 %>%
+    set_args(
+      !!!model_params$model_2_args  
+    )
+  wflw_model_2 <- wflw_model_1 %>%
+    update_model(model_2)
+  
+  # Tune stage 2
+  set.seed(123)
+  tune_stage_2 <- tune_grid(
+    wflw_model_2,
+    resamples = cv_folds,
+    grid      = model_params$grid_2,
+    metrics   = metric_set(mape),
+    control   = control_grid(verbose = TRUE)
+  )
+  autoplot(tune_stage_2, metric = 'mape')
+  grid_last <- tune_stage_2
+  all_results <- tune_stage_2 %>% collect_metrics() %>% arrange(mean) 
+  result <- all_results %>% filter(row_number() <= 3)
+  result[[param_name]] <- best_params_model_1[[1]]
+  
+  return(list(result = result, all_results = all_results, grid = tune_stage_2))
+}
+```
+
+Further, let's define the models grid, which parameters to tune, what type of engine/mode do we utilize and which features do we utilize.
+
+``` {r, echo = False}
+
+models <- list(
+  lgbm = list(
+    model_name = 'lgbm',
+    model_1 = boost_tree(mode = "regression", engine = "lightgbm", learn_rate = tune()),
+    model_2_args = list(tree_depth = tune(), loss_reduction = tune(), stop_iter = tune()),
+    rec_spec = recipe(fare_amount ~ ., df_train),
+    grid_1 = set_seed_grid(grid_latin_hypercube(learn_rate(), size = 10), 123),
+    grid_2 = set_seed_grid(grid_latin_hypercube(tree_depth(), loss_reduction(), stop_iter(), size = 10), 123)
+  ),
+  xgboost = list(
+    model_name = 'xgboost',
+    model_1 = boost_tree(mode = "regression", engine = "xgboost", learn_rate = tune()),
+    model_2_args = list(tree_depth = tune(), loss_reduction = tune(), stop_iter = tune()),
+    rec_spec = recipe(fare_amount ~ ., df_train),
+    grid_1 = set_seed_grid(grid_latin_hypercube(learn_rate(), size = 10), 123),
+    grid_2 = set_seed_grid(grid_latin_hypercube(tree_depth(), loss_reduction(), stop_iter(), size = 10), 123)
+  ),
+  decision_tree = list(
+    model_name = 'decision_tree',
+    model_1 = decision_tree(mode = "regression", engine = "rpart", cost_co
+                            
+                            mplexity = tune()),
+    model_2_args = list(tree_depth = tune(), min_n = tune()),
+    rec_spec = recipe(fare_amount ~ ., df_train),
+    grid_1 = set_seed_grid(grid_latin_hypercube(cost_complexity(), size = 10), 123),
+    grid_2 = set_seed_grid(grid_latin_hypercube(tree_depth(), min_n(), size = 10), 123)
+  )
+  #,random_forest_1 = list(
+  #  model_name = 'random_forest_1',
+  #  model_1 = rand_forest(mode = "regression", engine = "ranger", mtry = 6, trees = tune()),
+   # model_2_args = list(min_n = tune()),
+  #  rec_spec = recipe(fare_amount ~ ., df_train),
+  #  grid_1 = set_seed_grid(grid_latin_hypercube(trees(), size = 10), 123),
+  #  grid_2 = set_seed_grid(grid_latin_hypercube(min_n(), size = 10), 123)
+  #),
+  #random_forest_2 = list(
+  #  model_name = 'random_forest_2',
+  
+  #  model_1 = rand_forest(mode = "regression", engine = "ranger", mtry = 11, trees = tune()),
+  #  model_2_args = list(min_n = tune()),
+  #  rec_spec = recipe(fare_amount ~ ., df_train),
+  #  grid_1 = set_seed_grid(grid_latin_hypercube(trees(), size = 10), 123),
+  #  grid_2 = set_seed_grid(grid_latin_hypercube(min_n(), size = 10), 123)
+  #)
+)
+
+model_names <- c('lgbm', 'xgboost', 'decision_tree', 'random_forest_1', 'random_forest_2')
+
+```
+
+``` {r, echo = FALSE}
+# Loop over models
+for (model_name in model_names) {
+  result <- tune_two_stages(models, model_name)
+  
+  print(paste("Result for", model_name, ":", result))
+  
+  results_list[[model_name]] <- result
+}
+```
+
+``` {r, echo = FALSE}
+lgbm_df <- results_list[["lgbm"]]$result %>%
+  mutate(Mape = round(mean, 3),
+         Mape_Std_Err = round(std_err, 3),
+         Model_Type = "Light GBM",
+         Model_Spec = paste("learn_rate:", round(learn_rate, 3),
+                            "tree_depth:", round(tree_depth, 3),
+                            "loss_reduction:", round(loss_reduction, 3),
+                            "stop_iter:", round(stop_iter, 3))) %>%
+  select(Model_Type, Model_Spec, Mape, Mape_Std_Err)
+
+xgboost_df <- results_list[["xgboost"]]$result %>%
+  mutate(Mape = round(mean, 3),
+         Mape_Std_Err = round(std_err, 3),
+         Model_Type = "XGBoost",
+         Model_Spec = paste("learn_rate:", round(learn_rate, 3),
+                            "tree_depth:", round(tree_depth, 3),
+                            "loss_reduction:", round(loss_reduction, 3),
+                            "stop_iter:", round(stop_iter, 3))) %>%
+  select(Model_Type, Model_Spec, Mape, Mape_Std_Err)
+
+decision_tree_df <- results_list[["decision_tree"]]$result %>%
+  mutate(Mape = round(mean, 3),
+         Mape_Std_Err = round(std_err, 3),
+         Model_Type = "Decision Tree",
+         Model_Spec = paste("tree_depth:", round(tree_depth, 3),
+                            "min_n:", round(min_n, 3))) %>%
+  select(Model_Type, Model_Spec, Mape, Mape_Std_Err)
+
+random_forest_df <- results_list[["random_forest"]]$result %>%
+  mutate(Mape = round(mean, 3),
+         Mape_Std_Err = round(std_err, 3),
+         Model_Type = "Random Forest",
+         Model_Spec = paste("min_n:", round(min_n, 3))) %>%
+  select(Model_Type, Model_Spec, Mape, Mape_Std_Err)
+
+random_forest_2_df <- results_list[["random_forest_2"]]$result %>%
+  mutate(Mape = round(mean, 3),
+         Mape_Std_Err = round(std_err, 3),
+         Model_Type = "Random Forest",
+         Model_Spec = paste("min_n:", round(min_n, 3))) %>%
+  select(Model_Type, Model_Spec, Mape, Mape_Std_Err)
+
+combined_table <- bind_rows(lgbm_df, xgboost_df, decision_tree_df, random_forest_df, random_forest_2_df)
+
+
+```
+
+``` {r, echo = FALSE}
+pander(combined_table)
+```
+
+``` {r, echo = FALSE}
+
+```
+
 
