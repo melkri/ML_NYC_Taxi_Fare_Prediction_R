@@ -412,8 +412,9 @@ model_names <- c('lgbm','xgboost','decision_tree','random_forest')
 
 ```
 ### Tuning & cross validation
-```{r, warning=FALSE, cache=TRUE}
+```{r message=FALSE, warning=FALSE, cache=TRUE}
 for (model_name in model_names) {
+  
   result <- tune_two_stages(models, model_name)
   results_list[[model_name]] <- result
   print ("written")
