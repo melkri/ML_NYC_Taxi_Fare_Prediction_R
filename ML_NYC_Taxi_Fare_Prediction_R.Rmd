@@ -412,7 +412,7 @@ model_names <- c('lgbm','xgboost','decision_tree','random_forest')
 
 ```
 ### Tuning & cross validation
-``` {r, echo = FALSE, cache = TRUE}
+```{r, warning=FALSE, cache=TRUE}
 for (model_name in model_names) {
   result <- tune_two_stages(models, model_name)
   results_list[[model_name]] <- result
@@ -420,7 +420,7 @@ for (model_name in model_names) {
 }
 ```
 ### Tuning's results
-``` {r, echo = FALSE, cache = TRUE}
+```{r, echo = TRUE}
 lgbm_df <- results_list[["lgbm"]]$result %>%
   mutate(Mape = round(mean, 3),
          Mape_Std_Err = round(std_err, 3),
@@ -461,7 +461,7 @@ combined_table <- bind_rows(lgbm_df, xgboost_df, decision_tree_df, random_forest
 
 datatable(combined_table, options = list(
   searching = FALSE,
-  pageLength = 3,
+  pageLength = 12,
   lengthMenu = c(5, 10, 15, 20),
   scrollX = TRUE
 ), 
